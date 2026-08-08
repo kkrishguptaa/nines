@@ -14,5 +14,11 @@ Verified: `target_met=True` in ~33s (15/15, Wilson low ≈ 0.80).
 python examples/demo_arc.py
 ```
 
+Drop weaker models when per-config rates show them dragging the pool:
+
+```bash
+python examples/demo_arc.py --models opus,sonnet
+```
+
 1. `is_palindrome` → clears `target=0.7` (mechanism works)
 2. Strict `parse_money` → usually refuses; always prints per-model rates + failure reasons

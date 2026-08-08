@@ -13,6 +13,9 @@ receipt = run(
     Task(prompt="implement add(a, b) -> int"),
     target=0.7,
     budget=Budget(max_cost_usd=5.0, max_attempts=25),
+    # Optional: restrict fan-out (default is opus+sonnet+haiku).
+    # Drop haiku when per-model rates show it dragging the pool:
+    models=("opus", "sonnet"),
 )
 print(receipt.target_met, receipt.best_output, receipt.checker_validated)
 ```

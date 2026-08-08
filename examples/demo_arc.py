@@ -12,6 +12,7 @@ Demo command (live API key required):
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -80,17 +81,41 @@ def _print_receipt(label: str, receipt, elapsed: float) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Two-task Nines demo arc")
+    parser.add_argument(
+        "--models",
+        default="opus,sonnet,haiku",
+        help="Comma-separated solver tiers (default: opus,sonnet,haiku). "
+        "Example: --models opus,sonnet to drop haiku.",
+    )
+    args = parser.parse_args()
+    models = tuple(m.strip() for m in args.models.split(",") if m.strip())
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("ANTHROPIC_API_KEY required for demo_arc", file=sys.stderr)
         return 2
 
     budget = Budget(max_cost_usd=3.0, max_attempts=25)
     t0 = time.time()
-    r1 = run(PALINDROME, target=0.7, budget=budget, initial_batch=5, max_workers=5)
+    r1 = run(
+        PALINDROME,
+        target=0.7,
+        budget=budget,
+        initial_batch=5,
+        max_workers=5,
+        models=models,
+    )
     _print_receipt("1/2 CLEAN WIN — is_palindrome (target=0.7)", r1, time.time() - t0)
 
     t1 = time.time()
-    r2 = run(PARSE_MONEY, target=0.7, budget=budget, initial_batch=5, max_workers=5)
+    r2 = run(
+        PARSE_MONEY,
+        target=0.7,
+        budget=budget,
+        initial_batch=5,
+        max_workers=5,
+        models=models,
+    )
     _print_receipt(
         "2/2 HARD TASK — parse_money strict (target=0.7)", r2, time.time() - t1
     )

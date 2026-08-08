@@ -33,6 +33,27 @@ def run(
     parallel = bool(ports.get("parallel", True))
     on_attempt = ports.get("on_attempt")
     max_workers = int(ports.get("max_workers") or MAX_WORKERS)
+    models = ports.get("models")
+    if models is not None:
+        models = tuple(models)
+        if not models:
+            return Receipt(
+                task=t,
+                target=target,
+                verifiable=False,
+                target_met=False,
+                attempts=[],
+                passes=0,
+                trials=0,
+                wilson_low=None,
+                wilson_high=None,
+                confidence="high",
+                total_cost_usd=0.0,
+                best_output=None,
+                detail="models: empty selection; pass at least one of opus/sonnet/haiku",
+                checker_validated=False,
+                canary_detail="skipped: empty models",
+            )
 
     cap = max_achievable_lower_bound(b.max_attempts)
     if target > cap:
@@ -133,7 +154,9 @@ def run(
         if room <= 0 or remaining(b.max_cost_usd, total_cost) <= 0:
             break
         before = len(attempts)
-        configs = diversity_configs(min(batch_size, room), start=len(attempts))
+        configs = diversity_configs(
+            min(batch_size, room), start=len(attempts), models=models
+        )
         if not configs:
             break
 

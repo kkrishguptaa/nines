@@ -176,11 +176,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fallback", action="store_true", help="Use pre-seeded ADD task")
     parser.add_argument("--budget", type=float, default=5.0)
     parser.add_argument(
+        "--models",
+        default="opus,sonnet,haiku",
+        help="Comma-separated solver tiers for Nines fan-out (default: opus,sonnet,haiku)",
+    )
+    parser.add_argument(
         "--reset",
         action="store_true",
         help="No durable state; re-run is a clean reset (banner only)",
     )
     args = parser.parse_args(argv)
+    models = tuple(m.strip() for m in args.models.split(",") if m.strip())
     if args.reset:
         print("reset: no durable state; this run is a clean demo slate", file=sys.stderr)
 
@@ -227,7 +233,11 @@ def main(argv: list[str] | None = None) -> int:
                     trials=args.trials,
                     target=args.target,
                     single_shot=live_solver,
-                    nines_ports={"synthesizer": synth, "solver": live_solver},
+                    nines_ports={
+                        "synthesizer": synth,
+                        "solver": live_solver,
+                        "models": models,
+                    },
                     budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
                     on_attempt=live.on_attempt,
                     checker=checker,
@@ -247,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
                     nines_ports={
                         "synthesizer": (lambda t, **k: checker) if checker else None,
                         "solver": echo,
+                        "models": models,
                     },
                     budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
                     on_attempt=live.on_attempt,
