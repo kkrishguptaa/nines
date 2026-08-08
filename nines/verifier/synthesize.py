@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, Literal, overload
 
 from nines.types import Task, VerifierMeta
-from nines.verifier.canary import canary_rejects, known_bad_for_task
+from nines.verifier.canary import canary_ok
 from nines.verifier.preamble import wrap_checker_source
 from nines.verifier.tiers import VerifierTier
 
@@ -42,8 +42,6 @@ def synthesize_verifier(
     Returns None when the task is unverifiable or canary fails after retry.
     With return_detail=True, also returns a canary_detail string.
     """
-    known_bad = known_bad_for_task(task)
-
     if _looks_subjective(task):
         detail = "unverifiable: task appears subjective / not mechanically checkable"
         return (None, detail) if return_detail else None
@@ -57,9 +55,9 @@ def synthesize_verifier(
         detail = "unverifiable: synthesis returned no checker"
         return (None, detail) if return_detail else None
 
-    if canary_rejects(meta, known_bad):
+    ok, detail = canary_ok(meta, task)
+    if ok:
         meta.canary_passed = True
-        detail = f"canary rejected known_bad {known_bad!r}"
         return (meta, detail) if return_detail else meta
 
     # Regenerate once, then unverifiable.
@@ -72,16 +70,13 @@ def synthesize_verifier(
         detail = "canary failed: regeneration returned no checker"
         return (None, detail) if return_detail else None
 
-    if canary_rejects(meta, known_bad):
+    ok, detail = canary_ok(meta, task)
+    if ok:
         meta.canary_passed = True
-        detail = f"canary rejected known_bad {known_bad!r} after regenerate"
+        detail = detail + " after regenerate"
         return (meta, detail) if return_detail else meta
 
-    detail = (
-        "canary failed: checker accepted known_bad after retry; "
-        f"known_bad={known_bad!r}"
-    )
-    return (None, detail) if return_detail else None
+    return (None, detail + " after retry") if return_detail else None
 
 
 def _default_synthesize(
@@ -106,9 +101,8 @@ def _default_synthesize(
         prompt += f"\n\nContext:\n{task.context}"
     if regenerate:
         prompt += (
-            "\n\nPrevious checker failed a known-bad canary (it accepted bad "
-            "output). Emit a stricter check that rejects empty/placeholder "
-            "strings and requires real task evidence."
+            "\n\nPrevious checker failed canary (accepted known-bad or rejected "
+            "known-good). Emit a stricter, correct check with concrete examples."
         )
     text = llm(prompt)
     if not text or "def check" not in text:
@@ -136,7 +130,6 @@ def _extract_check_source(text: str) -> str | None:
     if start < 0:
         return None
     source = text[start:].strip()
-    # Only strip a trailing closing fence line — never split on fences inside body.
     fence = "`" * 3
     if source.endswith(fence):
         source = source[: -len(fence)].rstrip()

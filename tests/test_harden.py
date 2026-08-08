@@ -26,6 +26,7 @@ def test_run_survives_rate_limits_via_retry():
         solver=solver,
         initial_batch=2,
         escalate=False,
+        parallel=False,
     )
     assert receipt.trials == 2
     assert receipt.passes >= 1

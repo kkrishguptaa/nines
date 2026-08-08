@@ -39,6 +39,7 @@ def test_compare_with_rich_callback_smoke():
             "solver": FakeSolver(always_pass=True),
             "initial_batch": 6,
             "escalate": False,
+            "parallel": False,
         },
         budget=Budget(max_cost_usd=10.0, max_attempts=6),
         on_attempt=live.on_attempt,

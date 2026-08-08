@@ -23,6 +23,7 @@ class Attempt:
     passed: bool | None
     cost_usd: float
     error: str | None = None
+    fail_reason: str | None = None
 
 
 @dataclass

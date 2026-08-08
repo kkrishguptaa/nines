@@ -14,6 +14,7 @@ def test_compare_returns_both_paths():
             "solver": FakeSolver(pass_indices={0, 1, 2, 3}),
             "initial_batch": 6,
             "escalate": False,  # fixed batch for deterministic counts
+            "parallel": False,
         },
         budget=Budget(max_cost_usd=10.0, max_attempts=6),
     )

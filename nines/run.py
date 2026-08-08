@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .cost import accumulate, remaining
-from .solver.call import solve_once
+from .solver.call import MAX_WORKERS, solve_once
 from .solver.diverse import diversity_configs
 from .stats.wilson import max_achievable_lower_bound
 from .stats.wilson import target_met as wilson_target_met
 from .stats.wilson import wilson_interval
 from .types import Attempt, Budget, Receipt, Task
-from .verifier.execute import check_output
+from .verifier.execute import check_output_detailed
 from .verifier.synthesize import synthesize_verifier
 from .verifier.tiers import VerifierTier
 
@@ -29,6 +30,9 @@ def run(
     solver = ports.get("solver")
     initial_batch = int(ports.get("initial_batch") or min(b.max_attempts or 8, 8))
     escalate = ports.get("escalate", True)
+    parallel = bool(ports.get("parallel", True))
+    on_attempt = ports.get("on_attempt")
+    max_workers = int(ports.get("max_workers") or MAX_WORKERS)
 
     cap = max_achievable_lower_bound(b.max_attempts)
     if target > cap:
@@ -101,6 +105,28 @@ def run(
     checker_validated = bool(meta.canary_passed)
     canary_ok_detail = canary_detail or "canary rejected known_bad"
 
+    def _solve_one(config: dict) -> Attempt:
+        try:
+            output, cost = solve_once(t, config, llm=llm, solver=solver)
+        except Exception as exc:  # noqa: BLE001
+            return Attempt(
+                config=config,
+                output=None,
+                passed=False,
+                cost_usd=0.0,
+                error=str(exc),
+                fail_reason=str(exc),
+            )
+        ok, reason = check_output_detailed(meta, output)
+        return Attempt(
+            config=config,
+            output=output,
+            passed=ok,
+            cost_usd=cost,
+            error=None if ok else reason,
+            fail_reason=None if ok else reason,
+        )
+
     batch_size = max(1, initial_batch)
     while True:
         room = max_attempts - len(attempts)
@@ -110,57 +136,34 @@ def run(
         configs = diversity_configs(min(batch_size, room), start=len(attempts))
         if not configs:
             break
-        for config in configs:
+
+        batch_attempts: list[Attempt]
+        if parallel and len(configs) > 1:
+            batch_attempts = []
+            with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(configs)))) as pool:
+                futures = [pool.submit(_solve_one, cfg) for cfg in configs]
+                for fut in as_completed(futures):
+                    batch_attempts.append(fut.result())
+            # Stable display order by original config sequence
+            order = {json_key(c): i for i, c in enumerate(configs)}
+            batch_attempts.sort(key=lambda a: order.get(json_key(a.config), 0))
+        else:
+            batch_attempts = [_solve_one(cfg) for cfg in configs]
+
+        for attempt in batch_attempts:
             if len(attempts) >= max_attempts:
                 break
-            if remaining(b.max_cost_usd, total_cost) <= 0:
-                break
-            try:
-                output, cost = solve_once(t, config, llm=llm, solver=solver)
-            except Exception as exc:  # noqa: BLE001 — record and continue
-                attempts.append(
-                    Attempt(
-                        config=config,
-                        output=None,
-                        passed=False,
-                        cost_usd=0.0,
-                        error=str(exc),
-                    )
-                )
-                continue
-
-            # Always account spend after the model call; never discard a paid attempt.
-            total_cost = accumulate(total_cost, cost)
-            try:
-                ok = check_output(meta, output)
-            except Exception as exc:  # noqa: BLE001
-                attempts.append(
-                    Attempt(
-                        config=config,
-                        output=output,
-                        passed=False,
-                        cost_usd=cost,
-                        error=f"checker error: {exc}",
-                    )
-                )
-                continue
-            attempts.append(
-                Attempt(
-                    config=config,
-                    output=output,
-                    passed=ok,
-                    cost_usd=cost,
-                    error=None,
-                )
-            )
-            if ok:
+            total_cost = accumulate(total_cost, attempt.cost_usd)
+            attempts.append(attempt)
+            if attempt.passed:
                 passes += 1
-                if best_output is None:
-                    best_output = output
+                if best_output is None and attempt.output:
+                    best_output = attempt.output
+            if on_attempt is not None:
+                on_attempt(attempt)
 
         trials = len(attempts)
         if trials == before:
-            # No progress this round — avoid an infinite loop.
             break
 
         if trials > 0:
@@ -178,7 +181,6 @@ def run(
         if not escalate or budget_exhausted:
             break
 
-        # Escalate batch size (capped by remaining attempts).
         next_size = max(batch_size * 2, batch_size + 1)
         batch_size = min(next_size, max_attempts - trials)
         if batch_size <= 0:
@@ -210,4 +212,13 @@ def run(
         detail=detail,
         checker_validated=checker_validated,
         canary_detail=canary_ok_detail,
+    )
+
+
+def json_key(config: dict) -> tuple:
+    return (
+        config.get("model"),
+        config.get("effort"),
+        config.get("framing"),
+        config.get("trial"),
     )

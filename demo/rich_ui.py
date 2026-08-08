@@ -66,18 +66,27 @@ class DemoLive:
         self._refresh()
 
     def finalize(self, result: dict) -> None:
+        from nines.report import format_config_line, format_failure_summary
+
         ni: Receipt = result["nines"]
         ss: Receipt = result["single_shot"]
         self.set_canary(ni.checker_validated, ni.canary_detail)
         if self._live is not None:
             self._live.update(self._render())
         best = (ni.best_output or "")[:200].replace("\n", "\\n")
+        wilson = (
+            f"[{ni.wilson_low:.2f}, {ni.wilson_high:.2f}]"
+            if ni.wilson_low is not None and ni.wilson_high is not None
+            else "n/a"
+        )
         panel = Panel.fit(
             Text.from_markup(
                 f"[bold]target_met[/]={ni.target_met}  "
                 f"checker_validated={ni.checker_validated}\n"
                 f"nines attempts={ni.trials} passes={ni.passes} "
-                f"cost=${ni.total_cost_usd:.4f}\n"
+                f"Wilson {wilson} cost=${ni.total_cost_usd:.4f}\n"
+                f"by model: {format_config_line(ni)}\n"
+                f"{format_failure_summary(ni)}\n"
                 f"single-shot={ss.passes}/{ss.trials} "
                 f"target_met={ss.target_met}\n"
                 f"best_output={best!r}\n"

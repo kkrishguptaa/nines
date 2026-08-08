@@ -31,6 +31,7 @@ def test_reachable_target_can_meet():
         solver=FakeSolver(always_pass=True),
         initial_batch=5,
         escalate=False,
+        parallel=False,
     )
     assert receipt.target_met is True
     assert receipt.wilson_low is not None and receipt.wilson_low >= 0.55

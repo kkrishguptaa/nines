@@ -24,6 +24,7 @@ def test_defaults_use_anthropic_when_key_set(monkeypatch):
         budget=Budget(max_cost_usd=1.0, max_attempts=5),
         initial_batch=5,
         escalate=False,
+        parallel=False,
     )
     assert called["synth"] >= 1 and called["solve"] >= 1
     assert r.verifiable is True

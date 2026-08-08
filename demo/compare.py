@@ -75,15 +75,18 @@ def compare(
 
     ports.setdefault("initial_batch", min(trials, 8))
     ports.setdefault("escalate", True)
+
+    def _nines_cb(attempt: Attempt) -> None:
+        if on_attempt:
+            on_attempt("nines", attempt)
+
+    ports["on_attempt"] = _nines_cb
     nines_receipt: Receipt = run(
         task,
         target=target,
         budget=b,
         **ports,
     )
-    for attempt in nines_receipt.attempts:
-        if on_attempt:
-            on_attempt("nines", attempt)
 
     from nines.stats.wilson import target_met as wilson_target_met
     from nines.stats.wilson import wilson_interval
@@ -130,6 +133,8 @@ def compare(
 
 
 def _print_summary(result: dict[str, Any]) -> None:
+    from nines.report import format_config_line, format_failure_summary
+
     ss: Receipt = result["single_shot"]
     ni: Receipt = result["nines"]
     ss_rate = (ss.passes / ss.trials * 100) if ss.trials else 0.0
@@ -147,6 +152,8 @@ def _print_summary(result: dict[str, Any]) -> None:
         f"nines:       {ni.passes}/{ni.trials} ({wilson}) "
         f"target_met={ni.target_met} cost=${ni.total_cost_usd:.4f}"
     )
+    print(f"by model:    {format_config_line(ni)}")
+    print(format_failure_summary(ni))
 
 
 def _load_fallback_task() -> tuple[Task, VerifierMeta]:

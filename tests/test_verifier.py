@@ -40,9 +40,41 @@ def test_ok_checker_sets_checker_validated_true():
         solver=FakeSolver(always_pass=True),
         initial_batch=5,
         escalate=False,
+        parallel=False,
     )
     assert receipt.checker_validated is True
     assert receipt.canary_detail
+
+
+def test_overstrict_checker_fails_known_good_canary():
+    """Checker that rejects everything fails positive canary when known_good exists."""
+    from nines.types import VerifierMeta
+
+    source = (
+        "def check(output: str) -> bool:\n"
+        "    return False\n"
+    )
+    synth = FakeSynthesizer(
+        result=VerifierMeta(
+            tier=2, source_code=source, rubric=None, canary_passed=False
+        )
+    )
+    receipt = run(
+        Task(
+            prompt=(
+                "Write is_palindrome(s: str) -> bool. Empty string is True. Code only."
+            )
+        ),
+        target=0.7,
+        budget=Budget(max_cost_usd=1.0, max_attempts=25),
+        synthesizer=synth,
+        solver=FakeSolver(always_pass=True),
+        parallel=False,
+    )
+    assert receipt.verifiable is False
+    assert "known_good" in (receipt.canary_detail or "").lower()
+    assert receipt.attempts == []
+    assert receipt.target_met is False
 
 
 def test_subjective_poem_short_circuits_without_solver():

@@ -11,6 +11,7 @@ def test_five_attempts_have_distinct_configs():
         solver=FakeSolver(pass_indices={0, 2, 4}),
         initial_batch=5,
         escalate=False,
+        parallel=False,
     )
     assert len(receipt.attempts) == 5
     configs = [tuple(sorted(a.config.items())) for a in receipt.attempts]
@@ -28,6 +29,7 @@ def test_zero_passes_never_silent_success():
         solver=FakeSolver(pass_indices=set()),
         initial_batch=3,
         escalate=False,
+        parallel=False,
     )
     assert receipt.passes == 0
     assert receipt.target_met is False

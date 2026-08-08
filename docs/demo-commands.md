@@ -1,0 +1,18 @@
+# Demo commands (hackathon)
+
+## Clean win (T5) — use this live
+
+```bash
+python -c "from nines import run,Task,Budget; r=run(Task(prompt='Write a Python function is_palindrome(s: str) -> bool that returns True iff s equals its reverse. Case-sensitive, spaces matter. Empty string is True. Code only.'), target=0.7, budget=Budget(max_cost_usd=2.0, max_attempts=25)); print(r.target_met, r.passes, r.trials, r.wilson_low)"
+```
+
+Verified: `target_met=True` in ~33s (15/15, Wilson low ≈ 0.80).
+
+## Full arc (T9)
+
+```bash
+python examples/demo_arc.py
+```
+
+1. `is_palindrome` → clears `target=0.7` (mechanism works)
+2. Strict `parse_money` → usually refuses; always prints per-model rates + failure reasons
