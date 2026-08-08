@@ -1,6 +1,9 @@
 [project]
 name = "nines"
 version = "0.1.0"
+description = "Reliability compiler: declare a target, get a Wilson-gated receipt"
+readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = ["anthropic", "hypothesis", "httpx", "rich"]
 
