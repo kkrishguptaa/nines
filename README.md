@@ -26,7 +26,13 @@ Real code (see `docs/claims.md`):
 - Budgeted diverse fan-out gated by the checker
 - Measured pass rate vs a declared target (`target_met` iff Wilson lower bound ≥ target)
 
-**Not claimed:** a novel model, production SLAs, or multi-tenant sandbox isolation. Unit tests use labeled mocks in `tests/fakes.py`.
+**Not claimed:** a novel model, production SLAs, or multi-tenant sandbox isolation. Unit tests and keyless demo paths use **labeled mocks** (`tests/fakes.py`, demo `_Echo` solver).
+
+### Known limits
+
+- Targets above the best Wilson lower bound for `max_attempts` return immediately as unreachable (no API spend).
+- Subjective tasks (e.g. poems) return `verifiable=False` without solving.
+- Live checker synthesis can fail canary after one regenerate; that is reported honestly, not papered over.
 
 ## Comparison demo
 
