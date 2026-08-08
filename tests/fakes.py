@@ -36,6 +36,23 @@ class FakeSolver:
         return "FAIL", self.cost_usd
 
 
+class FlakyRateLimitSolver:
+    """Fails with RateLimitError ``fail_times`` then returns PASS. Label: mock."""
+
+    def __init__(self, *, fail_times: int = 2, cost_usd: float = 0.01) -> None:
+        self.fail_times = fail_times
+        self.cost_usd = cost_usd
+        self.calls = 0
+
+    def __call__(self, task: Task, config: dict, **kwargs) -> tuple[str, float]:
+        from nines.solver.call import RateLimitError
+
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise RateLimitError("429 rate limited (mock)")
+        return "PASS", self.cost_usd
+
+
 class FakeSynthesizer:
     """Test double for verifier synthesis. Label: mock."""
 

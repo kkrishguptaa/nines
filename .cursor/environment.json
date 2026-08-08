@@ -4,5 +4,5 @@
     "dockerfile": "Dockerfile",
     "context": ".."
   },
-  "install": "python3 -m pip install -U pip setuptools wheel && if [ -f pyproject.toml ]; then python3 -m pip install -e \".[dev]\"; else python3 -m pip install pytest pytest-asyncio hypothesis anthropic httpx hatchling; fi && python3 --version && gh --version"
+    "install": "python3 -m venv /workspace/.venv && /workspace/.venv/bin/pip install -U pip setuptools wheel && if [ -f pyproject.toml ]; then /workspace/.venv/bin/pip install -e \".[dev]\"; else /workspace/.venv/bin/pip install pytest pytest-asyncio hypothesis anthropic httpx hatchling; fi && /workspace/.venv/bin/python --version && gh --version && echo 'export PATH=/workspace/.venv/bin:$PATH' >> ~/.bashrc"
 }

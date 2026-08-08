@@ -136,10 +136,12 @@ def run(
     detail = None
     if passes == 0:
         detail = "zero passing candidates; refusing silent best-guess"
-    elif not met:
-        detail = "budget exhausted before Wilson lower bound cleared target"
-    else:
+    elif met:
         detail = "target met via Wilson lower bound"
+    elif not escalate:
+        detail = "fixed batch complete; Wilson lower bound did not clear target"
+    else:
+        detail = "budget exhausted before Wilson lower bound cleared target"
 
     return Receipt(
         task=t,

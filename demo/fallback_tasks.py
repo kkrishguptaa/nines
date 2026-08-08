@@ -13,9 +13,17 @@ ADD = Task(
 # Checker artifact used when synthesis fails (--fallback path).
 ADD_CHECKER = """
 def check(output: str) -> bool:
+    text = output.strip()
+    if "```" in text:
+        parts = text.split("```")
+        # Prefer fenced body (index 1); drop optional language tag.
+        body = parts[1] if len(parts) > 1 else text
+        if body.lstrip().startswith("python"):
+            body = body.lstrip()[6:]
+        text = body.strip()
     ns = {}
     try:
-        exec(output, ns, ns)
+        exec(text, ns, ns)
     except Exception:
         return False
     fn = ns.get("add")
