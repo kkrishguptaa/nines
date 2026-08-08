@@ -26,6 +26,14 @@ class Attempt:
 
 
 @dataclass
+class VerifierMeta:
+    tier: int
+    source_code: str | None
+    rubric: str | None
+    canary_passed: bool
+
+
+@dataclass
 class Receipt:
     task: Task
     target: float
