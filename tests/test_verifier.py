@@ -43,3 +43,18 @@ def test_ok_checker_sets_checker_validated_true():
     )
     assert receipt.checker_validated is True
     assert receipt.canary_detail
+
+
+def test_subjective_poem_short_circuits_without_solver():
+    solver = FakeSolver(always_pass=True)
+    receipt = run(
+        Task(prompt="Write a short poem about the ocean at dusk."),
+        target=0.7,
+        budget=Budget(max_cost_usd=2.0, max_attempts=25),
+        synthesizer=FakeSynthesizer.ok_checker(),  # would otherwise "work"
+        solver=solver,
+    )
+    assert receipt.verifiable is False
+    assert receipt.attempts == []
+    assert solver.calls == 0
+    assert "subjective" in (receipt.detail or "").lower()

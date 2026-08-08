@@ -4,6 +4,7 @@ from typing import Any, Callable, Literal, overload
 
 from nines.types import Task, VerifierMeta
 from nines.verifier.canary import canary_rejects, known_bad_for_task
+from nines.verifier.preamble import wrap_checker_source
 from nines.verifier.tiers import VerifierTier
 
 Synthesizer = Callable[..., VerifierMeta | None]
@@ -42,6 +43,10 @@ def synthesize_verifier(
     With return_detail=True, also returns a canary_detail string.
     """
     known_bad = known_bad_for_task(task)
+
+    if _looks_subjective(task):
+        detail = "unverifiable: task appears subjective / not mechanically checkable"
+        return (None, detail) if return_detail else None
 
     if synthesizer is not None:
         meta = synthesizer(task, llm=llm)
@@ -92,7 +97,9 @@ def _default_synthesize(
         "From the following task description only, write a Python function "
         "`def check(output: str) -> bool` that returns True iff the candidate "
         "output solves the task. Prefer Hypothesis properties or deterministic "
-        "assertions. Do not solve the task. Return only the function source.\n\n"
+        "assertions. Call `_nines_strip_fences(output)` before exec (helper is "
+        "pre-defined). Do not write markdown fence characters. Do not solve "
+        "the task. Return only the function source.\n\n"
         f"Task:\n{task.prompt}"
     )
     if task.context:
@@ -123,11 +130,33 @@ def _default_synthesize(
 
 
 def _extract_check_source(text: str) -> str | None:
+    if "UNSUPPORTED" in text and "def check" not in text:
+        return None
     start = text.find("def check")
     if start < 0:
         return None
     source = text[start:].strip()
-    # Drop a trailing markdown fence if the model wrapped the function.
-    if "```" in source:
-        source = source.split("```", 1)[0].rstrip()
-    return source or None
+    # Only strip a trailing closing fence line — never split on fences inside body.
+    fence = "`" * 3
+    if source.endswith(fence):
+        source = source[: -len(fence)].rstrip()
+    return wrap_checker_source(source) if source else None
+
+
+_SUBJECTIVE_MARKERS = (
+    "poem",
+    "poetry",
+    "haiku",
+    "essay",
+    "story",
+    "opinion",
+    "review a movie",
+    "what do you feel",
+    "creative writing",
+    "love letter",
+)
+
+
+def _looks_subjective(task: Task) -> bool:
+    text = f"{task.prompt} {task.context or ''}".lower()
+    return any(m in text for m in _SUBJECTIVE_MARKERS)

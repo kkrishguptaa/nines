@@ -26,8 +26,12 @@ def known_bad_for_task(task: Task) -> str:
 
 
 def canary_rejects(meta: VerifierMeta, known_bad: str = KNOWN_BAD) -> bool:
-    """Return True if the checker correctly fails known-bad output."""
+    """Return True if the checker correctly fails known-bad output.
+
+    Checker crashes are treated as rejection failures (not validated).
+    """
     try:
         return check_output(meta, known_bad) is False
     except Exception:
+        # A crashing checker is not a trustworthy reject — force regenerate/fail.
         return False
