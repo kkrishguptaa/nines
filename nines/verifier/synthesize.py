@@ -1,12 +1,32 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Literal, overload
 
 from nines.types import Task, VerifierMeta
-from nines.verifier.canary import canary_rejects
+from nines.verifier.canary import canary_rejects, known_bad_for_task
 from nines.verifier.tiers import VerifierTier
 
 Synthesizer = Callable[..., VerifierMeta | None]
+
+
+@overload
+def synthesize_verifier(
+    task: Task,
+    *,
+    llm: Any = None,
+    synthesizer: Synthesizer | None = None,
+    return_detail: Literal[False] = False,
+) -> VerifierMeta | None: ...
+
+
+@overload
+def synthesize_verifier(
+    task: Task,
+    *,
+    llm: Any = None,
+    synthesizer: Synthesizer | None = None,
+    return_detail: Literal[True],
+) -> tuple[VerifierMeta | None, str]: ...
 
 
 def synthesize_verifier(
@@ -14,22 +34,28 @@ def synthesize_verifier(
     *,
     llm: Any = None,
     synthesizer: Synthesizer | None = None,
-) -> VerifierMeta | None:
+    return_detail: bool = False,
+) -> VerifierMeta | None | tuple[VerifierMeta | None, str]:
     """Produce an independent checker from the task alone.
 
     Returns None when the task is unverifiable or canary fails after retry.
+    With return_detail=True, also returns a canary_detail string.
     """
+    known_bad = known_bad_for_task(task)
+
     if synthesizer is not None:
         meta = synthesizer(task, llm=llm)
     else:
         meta = _default_synthesize(task, llm=llm)
 
     if meta is None:
-        return None
+        detail = "unverifiable: synthesis returned no checker"
+        return (None, detail) if return_detail else None
 
-    if canary_rejects(meta):
+    if canary_rejects(meta, known_bad):
         meta.canary_passed = True
-        return meta
+        detail = f"canary rejected known_bad {known_bad!r}"
+        return (meta, detail) if return_detail else meta
 
     # Regenerate once, then unverifiable.
     if synthesizer is not None:
@@ -38,13 +64,19 @@ def synthesize_verifier(
         meta = _default_synthesize(task, llm=llm, regenerate=True)
 
     if meta is None:
-        return None
+        detail = "canary failed: regeneration returned no checker"
+        return (None, detail) if return_detail else None
 
-    if canary_rejects(meta):
+    if canary_rejects(meta, known_bad):
         meta.canary_passed = True
-        return meta
+        detail = f"canary rejected known_bad {known_bad!r} after regenerate"
+        return (meta, detail) if return_detail else meta
 
-    return None
+    detail = (
+        "canary failed: checker accepted known_bad after retry; "
+        f"known_bad={known_bad!r}"
+    )
+    return (None, detail) if return_detail else None
 
 
 def _default_synthesize(

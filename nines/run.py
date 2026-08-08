@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+
 from .cost import accumulate, remaining
 from .solver.call import solve_once
 from .solver.diverse import diversity_configs
+from .stats.wilson import max_achievable_lower_bound
 from .stats.wilson import target_met as wilson_target_met
 from .stats.wilson import wilson_interval
 from .types import Attempt, Budget, Receipt, Task
@@ -27,7 +30,44 @@ def run(
     initial_batch = int(ports.get("initial_batch") or min(b.max_attempts or 8, 8))
     escalate = ports.get("escalate", True)
 
-    meta = synthesize_verifier(t, llm=llm, synthesizer=synthesizer)
+    cap = max_achievable_lower_bound(b.max_attempts)
+    if target > cap:
+        return Receipt(
+            task=t,
+            target=target,
+            verifiable=False,
+            target_met=False,
+            attempts=[],
+            passes=0,
+            trials=0,
+            wilson_low=None,
+            wilson_high=None,
+            confidence="high",
+            total_cost_usd=0.0,
+            best_output=None,
+            detail=(
+                f"unreachable: target {target} exceeds best Wilson lower bound "
+                f"{cap:.4f} for max_attempts={b.max_attempts}"
+            ),
+            checker_validated=False,
+            canary_detail="skipped: unreachable target",
+        )
+
+    # Default live ports only when nothing is injected and a key is present.
+    if (
+        synthesizer is None
+        and solver is None
+        and llm is None
+        and os.environ.get("ANTHROPIC_API_KEY")
+    ):
+        from nines.solver.anthropic_llm import AnthropicSolver, AnthropicSynthesizer
+
+        synthesizer = AnthropicSynthesizer()
+        solver = AnthropicSolver()
+
+    meta, canary_detail = synthesize_verifier(
+        t, llm=llm, synthesizer=synthesizer, return_detail=True
+    )
 
     if meta is None:
         return Receipt(
@@ -43,7 +83,10 @@ def run(
             confidence="high",
             total_cost_usd=0.0,
             best_output=None,
-            detail="unverifiable: no usable checker after synthesis/canary",
+            detail=canary_detail
+            or "unverifiable: no usable checker after synthesis/canary",
+            checker_validated=False,
+            canary_detail=canary_detail or "canary failed or synthesis returned None",
         )
 
     confidence = "low" if meta.tier == int(VerifierTier.LLM_RUBRIC) else "high"
@@ -55,6 +98,8 @@ def run(
     wilson_low: float | None = None
     wilson_high: float | None = None
     met = False
+    checker_validated = bool(meta.canary_passed)
+    canary_ok_detail = canary_detail or "canary rejected known_bad"
 
     batch_size = max(1, initial_batch)
     while True:
@@ -163,4 +208,6 @@ def run(
         total_cost_usd=total_cost,
         best_output=best_output if passes > 0 else None,
         detail=detail,
+        checker_validated=checker_validated,
+        canary_detail=canary_ok_detail,
     )

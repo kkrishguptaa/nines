@@ -73,8 +73,8 @@ def compare(
         if on_attempt:
             on_attempt("single_shot", attempt)
 
-    ports.setdefault("initial_batch", trials)
-    ports.setdefault("escalate", False)
+    ports.setdefault("initial_batch", min(trials, 8))
+    ports.setdefault("escalate", True)
     nines_receipt: Receipt = run(
         task,
         target=target,
@@ -113,6 +113,12 @@ def compare(
         total_cost_usd=sum(a.cost_usd for a in ss_attempts),
         best_output=next((a.output for a in ss_attempts if a.passed), None),
         detail=ss_detail,
+        checker_validated=bool(meta and meta.canary_passed),
+        canary_detail=(
+            "baseline uses shared checker"
+            if meta is not None
+            else "no checker (soft-pass)"
+        ),
     )
 
     return {
@@ -133,6 +139,9 @@ def _print_summary(result: dict[str, Any]) -> None:
         else "Wilson n/a"
     )
     soft = " [soft-pass, no checker]" if not ss.verifiable else ""
+    print(
+        f"[canary] validated={ni.checker_validated} detail={ni.canary_detail}"
+    )
     print(f"single-shot: {ss.passes}/{ss.trials} ({ss_rate:.0f}%){soft} target_met={ss.target_met}")
     print(
         f"nines:       {ni.passes}/{ni.trials} ({wilson}) "
@@ -155,11 +164,18 @@ def _load_fallback_task() -> tuple[Task, VerifierMeta]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Compare single-shot Claude vs Nines")
     parser.add_argument("--task", help="Task prompt text (or demo/fallback_tasks.py:ADD)")
-    parser.add_argument("--trials", type=int, default=5)
-    parser.add_argument("--target", type=float, default=0.8)
+    parser.add_argument("--trials", type=int, default=25)
+    parser.add_argument("--target", type=float, default=0.7)
     parser.add_argument("--fallback", action="store_true", help="Use pre-seeded ADD task")
     parser.add_argument("--budget", type=float, default=5.0)
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="No durable state; re-run is a clean reset (banner only)",
+    )
     args = parser.parse_args(argv)
+    if args.reset:
+        print("reset: no durable state; this run is a clean demo slate", file=sys.stderr)
 
     checker = None
     if args.fallback or not args.task:

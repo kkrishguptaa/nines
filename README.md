@@ -29,10 +29,10 @@ Real code (see `docs/claims.md`):
 ## Comparison demo
 
 ```bash
-python -m demo.compare --fallback --trials 5 --target 0.8
+python -m demo.compare --fallback --trials 25 --target 0.7
 ```
 
-Runs single-shot vs Nines on a pre-seeded `add(a,b)` task, prints progressive attempt lines, then a side-by-side summary and the Nines receipt JSON.
+Runs single-shot vs Nines on a pre-seeded `add(a,b)` task, prints progressive attempt lines, then a side-by-side summary and the Nines receipt JSON. Defaults are `target=0.7` / `trials=25` so a perfect batch can clear the Wilson lower bound (5/5 cannot clear 0.6).
 
 - `--fallback` / omit `--task`: use the pre-seeded property-checkable task if judge input would break synthesis.
 - Re-run the same command to reset (no durable state).

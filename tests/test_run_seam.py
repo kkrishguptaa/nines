@@ -1,7 +1,8 @@
 from nines import run, Task, Budget, Receipt
 
 
-def test_run_returns_receipt_echoing_target():
+def test_run_returns_receipt_echoing_target(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     receipt = run(
         Task(prompt="return 2+2"),
         target=0.9,
@@ -13,3 +14,4 @@ def test_run_returns_receipt_echoing_target():
     assert receipt.target_met is False
     assert receipt.attempts == []
     assert receipt.detail
+    assert receipt.checker_validated is False

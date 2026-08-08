@@ -25,3 +25,15 @@ def target_met(passes: int, trials: int, target: float, z: float = 1.96) -> bool
         return False
     low, _ = wilson_interval(passes, trials, z=z)
     return low >= target
+
+
+def max_achievable_lower_bound(
+    max_attempts: int | None, z: float = 1.96
+) -> float:
+    """Best possible Wilson lower bound if every attempt passes."""
+    if max_attempts is None:
+        return 1.0
+    if max_attempts <= 0:
+        return 0.0
+    low, _ = wilson_interval(max_attempts, max_attempts, z=z)
+    return low

@@ -48,3 +48,5 @@ class Receipt:
     total_cost_usd: float
     best_output: str | None
     detail: str | None = None
+    checker_validated: bool = False
+    canary_detail: str | None = None
