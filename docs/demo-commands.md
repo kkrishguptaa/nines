@@ -8,13 +8,16 @@
 
 Then pivot to `parse_money` refuse (`python examples/demo_arc.py`).
 
-## Clean win (T5) — use this live
+## Clean win — use this live (shill this)
+
+The smallest explainable demo — open `examples/minimal.py` on stage, then:
 
 ```bash
-python -c "from nines import run,Task,Budget; r=run(Task(prompt='Write a Python function is_palindrome(s: str) -> bool that returns True iff s equals its reverse. Case-sensitive, spaces matter. Empty string is True. Code only.'), target=0.7, budget=Budget(max_cost_usd=2.0, max_attempts=25)); print(r.target_met, r.passes, r.trials, r.wilson_low)"
+python examples/minimal.py
 ```
 
-Verified: `target_met=True` in ~33s (15/15, Wilson low ≈ 0.80).
+Expect: `target_met: True`, `15/15`, `wilson_low` ≈ 0.80, ~$0.02.  
+Stage line if asked about 15/15: see above, then pivot to the full arc.
 
 ## Full arc (T9)
 

@@ -65,7 +65,10 @@ Seam: `nines.run(task, *, target, budget) -> Receipt`. Claims map: [`docs/claims
 pip install -e ".[dev]"
 export ANTHROPIC_API_KEY=...
 
-# Lead with the arc: clean win → honest refuse
+# Smallest demo — open examples/minimal.py, then run it
+python examples/minimal.py
+
+# Full arc: clean win → honest refuse
 python examples/demo_arc.py --models opus,sonnet
 
 python -m demo.compare --fallback --trials 25 --target 0.7
