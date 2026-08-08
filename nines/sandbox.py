@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
-import textwrap
 
 
 def run_python(
@@ -16,18 +16,16 @@ def run_python(
 
     Not safe for untrusted input — timeout only, no container isolation.
     """
-    payload = textwrap.dedent(
-        f"""
-        import json, sys
-        {code}
-        args = json.loads(sys.argv[1])
-        result = {fn_name}(*args)
-        print(json.dumps({{"ok": True, "result": result}}))
-        """
+    payload = (
+        "import json, sys\n"
+        f"{code}\n"
+        "args = json.loads(sys.argv[1])\n"
+        f"result = {fn_name}(*args)\n"
+        'print(json.dumps({"ok": True, "result": result}))\n'
     )
     try:
         proc = subprocess.run(
-            [sys.executable, "-c", payload, __import__("json").dumps(args)],
+            [sys.executable, "-c", payload, json.dumps(args)],
             capture_output=True,
             text=True,
             timeout=timeout_s,
@@ -38,8 +36,6 @@ def run_python(
 
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or "sandbox failed")
-
-    import json
 
     line = proc.stdout.strip().splitlines()[-1]
     data = json.loads(line)

@@ -3,6 +3,39 @@ from __future__ import annotations
 from nines.types import Task, VerifierMeta
 
 
+class FakeSolver:
+    """Test double for solver attempts. Label: mock."""
+
+    def __init__(
+        self,
+        *,
+        pass_indices: set[int] | None = None,
+        always_pass: bool = False,
+        cost_usd: float = 0.01,
+        seed: int | None = None,
+        pass_rate: float | None = None,
+    ) -> None:
+        self.pass_indices = pass_indices or set()
+        self.always_pass = always_pass
+        self.cost_usd = cost_usd
+        self.seed = seed
+        self.pass_rate = pass_rate
+        self.calls = 0
+        self._rng = __import__("random").Random(seed)
+
+    def __call__(self, task: Task, config: dict, **kwargs) -> tuple[str, float]:
+        idx = self.calls
+        self.calls += 1
+        if self.always_pass:
+            return "PASS", self.cost_usd
+        if self.pass_rate is not None:
+            ok = self._rng.random() < self.pass_rate
+            return ("PASS" if ok else "FAIL"), self.cost_usd
+        if idx in self.pass_indices:
+            return "PASS", self.cost_usd
+        return "FAIL", self.cost_usd
+
+
 class FakeSynthesizer:
     """Test double for verifier synthesis. Label: mock."""
 
