@@ -1,74 +1,81 @@
 # Nines
 
-Your AI team ships answers that are *usually* right.  
-**Nines makes “usually” a number you can put in front of a board.**
+Your agent is right ~70% of the time. Tell Nines the bar you need — get a **receipt**, or an honest refuse.
 
-Tell Nines the reliability you need (70%, 80%, 90%…). It tries, measures, and either hands you something that cleared the bar — or **refuses** instead of quietly shipping a wrong answer.
+Nines is a **reliability compiler** for Claude: declare `target` + `budget`, synthesize an independent checker, fan out diverse solvers, escalate until a **Wilson lower bound** clears the target (or stop with `target_met: false`). No silent best-guess when nothing passes.
 
 ```python
 from nines import run, Task, Budget
 
 receipt = run(
     Task(prompt="Write is_palindrome(s: str) -> bool. Empty string is True. Code only."),
-    target=0.8,                                 # “I need ~80% confidence this works”
+    target=0.8,
     budget=Budget(max_cost_usd=2.0, max_attempts=25),
-    models=("opus", "sonnet"),                  # which AI models to hire for the job
+    models=("opus", "sonnet"),  # drop tiers that drag the pool
 )
-
 if receipt.target_met:
-    ship(receipt.best_output)                   # cleared the bar — safe to use
+    ship(receipt.best_output)
 else:
-    send_to_human(receipt.detail)               # did not clear — do not fake it
+    escalate_to_human(receipt.detail)
 ```
 
-## Ask once vs ask Nines (real run, same task)
+License: **Apache 2.0** — embeddable infrastructure, not GPL copyleft.
 
-Task: “write a palindrome checker.” Live Claude models. Costs are ballpark API spend, not an invoice.
+## Single-shot vs Nines (measured, same task)
 
-| Approach | Models used | Reliability bar you asked for | Did it clear the bar? | How many answers passed QA? | Approx. cost | What a CEO should hear |
+Task: `is_palindrome`. Live Claude. Costs ≈ adapter estimates, not invoices.
+
+| Approach | Models | Target | Cleared? | Checker passes | Approx. cost | Note |
 | --- | --- | --- | --- | ---: | ---: | --- |
-| **Without Nines** (one shot) | Sonnet once | None — you hope | Unknown | 1 try, no audit trail | **~$0.001** | Cheap. Blind. |
-| **Nines** | Opus + Sonnet + Haiku | **70%** | **Yes** | 15 / 15 | **~$0.02** | Pennies to prove “good enough.” |
-| **Nines** | Opus + Sonnet (no Haiku) | **70%** | **Yes** | 15 / 15 | **~$0.03** | Skip the weak model; still clears. |
-| **Nines** | Opus + Sonnet | **80%** | **Yes** | 25 / 25 | **~$0.06** | Higher bar → more checks → a bit more spend. |
-| **Nines** | Opus only | **90%** | **Yes** | 40 / 40 | **~$0.13** | Top model + more samples to defend 90%. |
-| **Nines** (honest refuse) | Opus only, capped at 25 tries | **90%** | **No — refused up front** | 0 (didn’t bother) | **$0** | You asked for proof the budget can’t buy. We say so. We don’t invent a green light. |
+| **Without Nines** | Sonnet ×1 | — | Unknown | 1 try, no bound | **~$0.001** | Answer, no trust signal |
+| **Nines** | Opus+Sonnet+Haiku | **0.70** | **Yes** | 15 / 15 | **~$0.02** | Stops at min *n* for Wilson @ 100% |
+| **Nines** | Opus+Sonnet | **0.70** | **Yes** | 15 / 15 | **~$0.03** | Same bar, stronger pool |
+| **Nines** | Opus+Sonnet | **0.80** | **Yes** | 25 / 25 | **~$0.06** | Higher bar → more samples |
+| **Nines** | Opus only | **0.90** | **Yes** | 40 / 40 | **~$0.13** | `max_attempts=40` |
+| **Nines** (refuse) | Opus only | **0.90** | **No** | 0 | **$0** | Same target, **smaller attempt budget** (`max_attempts=25`): 25/25 Wilson low ≈ 0.87 &lt; 0.90 → unreachable, no spend |
 
-**Two words on the receipt — in English:**
+**Why so many perfect rows?** Easy task + early stop. At 100% pass rate, Wilson needs ~15 / 25 / 40 trials to clear 0.7 / 0.8 / 0.9 — so the table *should* look like that. You did not gain a “better” palindrome; you gained **knowing** it’s safe to ship. One shot gives an answer and no idea whether to trust it. On a hard task the pool *does* fail — see `parse_money` below.
 
-| What you see | What it means (no math) |
+**Receipt words, plain English:**
+
+| Field | Meaning |
 | --- | --- |
-| **Checker pass** | “Did this answer survive an independent QA test?” Think of a second employee who only knows the *rules*, not the draft. They mark pass or fail. A high pass count means many drafts survived QA — not that we graded our own homework. |
-| **`target_met`** | “Did we hit the reliability you paid for?” Not “we got lucky once.” Nines keeps trying until the *statistics* say you’re at least as reliable as the bar you set — or it stops and tells you it didn’t. Green means ship. Red means escalate to a human. |
+| **Checker pass** | Independent QA said yes. Second process that only knows the *rules*, not the draft. |
+| **`target_met`** | Wilson **lower bound** ≥ your target — not a lucky point estimate. Green = ship. Red = human. |
 
-Hard jobs (e.g. strict money parsing) often come back red on purpose — with a breakdown like “Opus 5/8 · Sonnet 7/8 · Haiku 1/9.” That isn’t failure of the product; it’s the product refusing to rubber-stamp a flaky process. Drop the weak model with `models=("opus", "sonnet")` and try again, or raise the budget.
+### Technical spine (why this isn’t vibes)
 
-## What you are buying
+- **Wilson score interval (z≈1.96), not Wald.** Wald intervals lie at the edges (0/n, n/n) — exactly where agent demos live. `target_met` iff lower bound ≥ `target`.
+- **Canary / mutation check.** Before trusting a checker, run a known-bad candidate (and known-good when we have one). A checker that accepts garbage is discarded — the degenerate case “passes everything because it checks nothing.”
+- **Honest scope.** We measure **checker-pass rate**, not ground-truth correctness. If the verifier is wrong, the receipt is wrong (Stroebl et al.–style caveat). Canary reduces that risk; it does not erase it.
+- **Hard-task refusal is the product.** Strict `parse_money` often returns `target_met: false` with e.g. `opus: 5/8 · sonnet: 7/8 · haiku: 1/9` and assertion-failure frequencies — decline to lie, then optionally drop weak models via `models=`.
 
-1. **An independent checker** — QA that doesn’t trust the model’s smile.
-2. **Several models, several angles** — so one bad habit doesn’t fool the whole pool.
-3. **A number you named** — 70 / 80 / 90 — not a vibe.
-4. **A hard stop** — when it can’t clear the bar, you get a refusal, not a confident wrong answer.
+## What ships
 
-One call: `nines.run(...)` → a receipt. Green ship / red human.
+1. Independent verifier synthesis + canary  
+2. Diverse fan-out (model × effort × framing)  
+3. Wilson-gated `target_met`  
+4. Budget stop; zero passes ⇒ no silent best-guess  
 
-## Get it running
+Seam: `nines.run(task, *, target, budget) -> Receipt`. Claims map: [`docs/claims.md`](docs/claims.md).
+
+## Demo (~2 min)
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 export ANTHROPIC_API_KEY=...
 
-# Easy task clears → hard task shows an honest refuse (~2 min)
+# Lead with the arc: clean win → honest refuse
 python examples/demo_arc.py --models opus,sonnet
 
-# Side-by-side: one-shot hope vs Nines
 python -m demo.compare --fallback --trials 25 --target 0.7
 ```
 
-## Fine print (still plain English)
+**Stage line if asked about 15/15:** *Nothing failed because the task is easy — that’s the point. One shot gives you an answer; we give you the fact that it’s safe. On the hard task, look what happens.* → pivot to `parse_money` refuse.
 
-- We **orchestrate and measure**. We did not invent a new AI brain. See [`docs/claims.md`](docs/claims.md).
-- If you ask for a bar that your attempt budget *mathematically cannot* prove, Nines says no immediately and spends nothing.
-- Poems and “make it beautiful” tasks can’t be machine-checked fairly — Nines says “not verifiable” and won’t burn money pretending.
-- Sandbox is a safety seatbelt for demos, **not** a bank vault. Don’t feed it untrusted stranger code in production multi-tenant setups.
+## Limits
+
+- Target above best Wilson lower bound for `max_attempts` → immediate unreachable refuse.  
+- Subjective tasks → `verifiable=False`, no solver spend.  
+- Subprocess sandbox is **not** multi-tenant isolation.  
+- Not a novel model; not a production SLA.
