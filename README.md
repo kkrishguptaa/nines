@@ -1,89 +1,74 @@
 # Nines
 
-Your agent is right ~70% of the time. Tell Nines you need a measured bar — and get a receipt when it refuses.
+Your AI team ships answers that are *usually* right.  
+**Nines makes “usually” a number you can put in front of a board.**
 
-Nines is a **reliability compiler**. You declare a `target` and a `budget`; it synthesizes an independent checker, fans out diverse solvers, and escalates until a Wilson lower bound clears the target — or stops with `target_met: false` instead of a silent best-guess.
+Tell Nines the reliability you need (70%, 80%, 90%…). It tries, measures, and either hands you something that cleared the bar — or **refuses** instead of quietly shipping a wrong answer.
 
 ```python
 from nines import run, Task, Budget
 
 receipt = run(
     Task(prompt="Write is_palindrome(s: str) -> bool. Empty string is True. Code only."),
-    target=0.7,
+    target=0.8,                                 # “I need ~80% confidence this works”
     budget=Budget(max_cost_usd=2.0, max_attempts=25),
-    models=("opus", "sonnet"),  # optional: drop tiers that drag the pool
+    models=("opus", "sonnet"),                  # which AI models to hire for the job
 )
+
 if receipt.target_met:
-    use(receipt.best_output)
+    ship(receipt.best_output)                   # cleared the bar — safe to use
 else:
-    escalate_to_human(receipt.detail)
+    send_to_human(receipt.detail)               # did not clear — do not fake it
 ```
 
-## Single-shot vs Nines
+## Ask once vs ask Nines (real run, same task)
 
-Same task (`is_palindrome`), same live Claude stack. Measured once on this machine — costs are adapter estimates, not invoices.
+Task: “write a palindrome checker.” Live Claude models. Costs are ballpark API spend, not an invoice.
 
-| | Without Nines (single-shot) | With Nines |
-| --- | ---: | ---: |
-| Calls | 1 | 15 (stops when bar clears) |
-| Checker-gated pass | Failed | **15/15** |
-| Declared target | — | **0.70** |
-| Wilson interval | — | **[0.80, 1.00]** |
-| `target_met` | unknown (ships hope) | **`true`** |
-| Canary on checker | no | yes |
-| Approx. cost | **~$0.001** | **~$0.03** |
-| Wall time | ~9s | ~17s |
-| When it fails | You may ship a wrong answer | Receipt says refuse — no silent guess |
+| Approach | Models used | Reliability bar you asked for | Did it clear the bar? | How many answers passed QA? | Approx. cost | What a CEO should hear |
+| --- | --- | --- | --- | ---: | ---: | --- |
+| **Without Nines** (one shot) | Sonnet once | None — you hope | Unknown | 1 try, no audit trail | **~$0.001** | Cheap. Blind. |
+| **Nines** | Opus + Sonnet + Haiku | **70%** | **Yes** | 15 / 15 | **~$0.02** | Pennies to prove “good enough.” |
+| **Nines** | Opus + Sonnet (no Haiku) | **70%** | **Yes** | 15 / 15 | **~$0.03** | Skip the weak model; still clears. |
+| **Nines** | Opus + Sonnet | **80%** | **Yes** | 25 / 25 | **~$0.06** | Higher bar → more checks → a bit more spend. |
+| **Nines** | Opus only | **90%** | **Yes** | 40 / 40 | **~$0.13** | Top model + more samples to defend 90%. |
+| **Nines** (honest refuse) | Opus only, capped at 25 tries | **90%** | **No — refused up front** | 0 (didn’t bother) | **$0** | You asked for proof the budget can’t buy. We say so. We don’t invent a green light. |
 
-Single-shot was cheaper. It was also wrong on the checker. Nines spent a few cents and returned a bar you can defend.
+**Two words on the receipt — in English:**
 
-Hard tasks flip the story: strict `parse_money` often lands `target_met: false` with per-model rates (e.g. `opus: 5/8 · sonnet: 7/8 · haiku: 1/9`) and failure frequencies — so you know *why* the pool missed, and can drop weak models with `models=("opus", "sonnet")`.
+| What you see | What it means (no math) |
+| --- | --- |
+| **Checker pass** | “Did this answer survive an independent QA test?” Think of a second employee who only knows the *rules*, not the draft. They mark pass or fail. A high pass count means many drafts survived QA — not that we graded our own homework. |
+| **`target_met`** | “Did we hit the reliability you paid for?” Not “we got lucky once.” Nines keeps trying until the *statistics* say you’re at least as reliable as the bar you set — or it stops and tells you it didn’t. Green means ship. Red means escalate to a human. |
 
-## How it works
+Hard jobs (e.g. strict money parsing) often come back red on purpose — with a breakdown like “Opus 5/8 · Sonnet 7/8 · Haiku 1/9.” That isn’t failure of the product; it’s the product refusing to rubber-stamp a flaky process. Drop the weak model with `models=("opus", "sonnet")` and try again, or raise the budget.
 
-1. **Verifier-first** — synthesize a checker from the task alone; canary rejects checkers that accept known-bad (and known-good when available).
-2. **Diverse fan-out** — vary model tier, effort, and framing (not temperature alone).
-3. **Gate every candidate** — only checker-passing outputs count.
-4. **Wilson gate** — `target_met` iff lower bound ≥ `target`. High targets force more samples.
-5. **Budget stop** — cost / attempt ceiling; zero passes ⇒ `best_output is None`.
+## What you are buying
 
-Public seam is one function: `nines.run(task, *, target, budget) -> Receipt`.
+1. **An independent checker** — QA that doesn’t trust the model’s smile.
+2. **Several models, several angles** — so one bad habit doesn’t fool the whole pool.
+3. **A number you named** — 70 / 80 / 90 — not a vibe.
+4. **A hard stop** — when it can’t clear the bar, you get a refusal, not a confident wrong answer.
 
-## Quick start
+One call: `nines.run(...)` → a receipt. Green ship / red human.
+
+## Get it running
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 export ANTHROPIC_API_KEY=...
+
+# Easy task clears → hard task shows an honest refuse (~2 min)
 python examples/demo_arc.py --models opus,sonnet
-```
 
-Keyless / CI paths inject labeled mocks (`tests/fakes.py`, demo `_Echo`) — never presented as live models.
-
-## Demo
-
-```bash
-# Clean win → hard refuse (under ~2 min)
-python examples/demo_arc.py
-
-# Side-by-side single-shot vs Nines (rich live UI)
+# Side-by-side: one-shot hope vs Nines
 python -m demo.compare --fallback --trials 25 --target 0.7
 ```
 
-## Claims
+## Fine print (still plain English)
 
-Real code map: [`docs/claims.md`](docs/claims.md).
-
-**Claimed:** orchestration → inspectable `Receipt`; independent verifier + canary; budgeted diverse fan-out; Wilson-gated `target_met`.
-
-**Not claimed:** a novel model, production SLAs, or multi-tenant sandbox isolation.
-
-### Limits
-
-- Target above the best Wilson lower bound for `max_attempts` → immediate unreachable refuse (no spend).
-- Subjective tasks (poem / essay) → `verifiable=False`, no solver spend.
-- Live checker quality depends on Claude; canary + one regenerate is the honesty gate.
-
-## Safety
-
-Checker and solver code may run in a **subprocess sandbox** with timeouts and a **scrubbed child environment** (API keys are not forwarded). That is still **not** safe for untrusted multi-tenant input — no containers; filesystem access remains possible.
+- We **orchestrate and measure**. We did not invent a new AI brain. See [`docs/claims.md`](docs/claims.md).
+- If you ask for a bar that your attempt budget *mathematically cannot* prove, Nines says no immediately and spends nothing.
+- Poems and “make it beautiful” tasks can’t be machine-checked fairly — Nines says “not verifiable” and won’t burn money pretending.
+- Sandbox is a safety seatbelt for demos, **not** a bank vault. Don’t feed it untrusted stranger code in production multi-tenant setups.
