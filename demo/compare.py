@@ -45,16 +45,19 @@ def compare(
 
     for i in range(trials):
         config = {"model": "sonnet", "effort": "medium", "framing": "direct", "trial": i}
-        output, cost = solver(task, config)
+        try:
+            output, cost = solver(task, config)
+            err = None
+        except Exception as exc:  # noqa: BLE001 — match nines.run failure semantics
+            output, cost, err = None, 0.0, str(exc)
         passed = False
-        err = None
-        if meta is not None:
+        if err is None and meta is not None:
             try:
-                passed = check_output(meta, output)
+                passed = check_output(meta, output or "")
             except Exception as exc:  # noqa: BLE001
                 err = str(exc)
                 passed = False
-        else:
+        elif err is None:
             # Without a checker, treat non-empty as a soft pass for demo visibility.
             passed = bool(output and output.strip())
         attempt = Attempt(
@@ -82,20 +85,34 @@ def compare(
         if on_attempt:
             on_attempt("nines", attempt)
 
+    from nines.stats.wilson import target_met as wilson_target_met
+    from nines.stats.wilson import wilson_interval
+
+    ss_trials = len(ss_attempts)
+    ss_low = ss_high = None
+    ss_met = False
+    if ss_trials > 0 and meta is not None:
+        ss_low, ss_high = wilson_interval(ss_passes, ss_trials)
+        ss_met = wilson_target_met(ss_passes, ss_trials, target)
+
+    ss_detail = "single-shot baseline"
+    if meta is None:
+        ss_detail += " (soft-pass: no checker; non-empty output counts as pass)"
+
     ss_receipt = Receipt(
         task=task,
         target=target,
         verifiable=meta is not None,
-        target_met=False,
+        target_met=ss_met if meta is not None else False,
         attempts=ss_attempts,
         passes=ss_passes,
-        trials=len(ss_attempts),
-        wilson_low=None,
-        wilson_high=None,
+        trials=ss_trials,
+        wilson_low=ss_low,
+        wilson_high=ss_high,
         confidence="high",
         total_cost_usd=sum(a.cost_usd for a in ss_attempts),
         best_output=next((a.output for a in ss_attempts if a.passed), None),
-        detail="single-shot baseline",
+        detail=ss_detail,
     )
 
     return {
@@ -115,7 +132,8 @@ def _print_summary(result: dict[str, Any]) -> None:
         if ni.wilson_low is not None and ni.wilson_high is not None
         else "Wilson n/a"
     )
-    print(f"single-shot: {ss.passes}/{ss.trials} ({ss_rate:.0f}%)")
+    soft = " [soft-pass, no checker]" if not ss.verifiable else ""
+    print(f"single-shot: {ss.passes}/{ss.trials} ({ss_rate:.0f}%){soft} target_met={ss.target_met}")
     print(
         f"nines:       {ni.passes}/{ni.trials} ({wilson}) "
         f"target_met={ni.target_met} cost=${ni.total_cost_usd:.4f}"

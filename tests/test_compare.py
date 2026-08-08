@@ -1,4 +1,4 @@
-from nines import Task, Budget
+from nines import Budget, Task, run
 from tests.fakes import FakeSolver, FakeSynthesizer
 from demo.compare import compare
 
@@ -18,6 +18,8 @@ def test_compare_returns_both_paths():
         budget=Budget(max_cost_usd=10.0, max_attempts=3),
     )
     assert "single_shot" in result and "nines" in result
-    assert result["nines"].trials >= 1
-    assert "single_shot_passes" in result
+    assert result["nines"].trials == 3
+    assert result["nines"].passes == 2
+    assert result["single_shot_passes"] == 1
     assert result["single_shot_trials"] == 3
+    assert result["single_shot"].verifiable is True

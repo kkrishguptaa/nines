@@ -12,6 +12,7 @@ def test_solver_retries_on_rate_limit():
         solver=solver,
     )
     assert output == "PASS"
+    assert cost == solver.cost_usd
     assert solver.calls >= 3
 
 

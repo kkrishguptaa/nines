@@ -16,11 +16,12 @@ def check(output: str) -> bool:
     text = output.strip()
     if "```" in text:
         parts = text.split("```")
-        # Prefer fenced body (index 1); drop optional language tag.
+        # Prefer fenced body (index 1); drop optional language tag line.
         body = parts[1] if len(parts) > 1 else text
-        if body.lstrip().startswith("python"):
-            body = body.lstrip()[6:]
-        text = body.strip()
+        lines = body.splitlines()
+        if lines and lines[0].strip() and not lines[0].lstrip().startswith(("def ", "class ", "import ", "from ")):
+            lines = lines[1:]
+        text = "\n".join(lines).strip()
     ns = {}
     try:
         exec(text, ns, ns)

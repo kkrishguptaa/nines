@@ -40,7 +40,7 @@ Runs single-shot vs Nines on a pre-seeded `add(a,b)` task, prints progressive at
 
 ## Safety
 
-Checker and solver code may run in a **subprocess sandbox** with timeouts. That sandbox is **not** safe for untrusted input — do not pass untrusted task text or candidate code into Nines in multi-tenant or production isolation scenarios.
+Checker and solver code may run in a **subprocess sandbox** with timeouts and a **scrubbed child environment** (API keys are not forwarded). That sandbox is still **not** safe for untrusted input — no containers, filesystem access remains possible. Do not pass untrusted task text or candidate code into Nines in multi-tenant or production isolation scenarios.
 
 ## Install / test
 
