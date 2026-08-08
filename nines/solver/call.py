@@ -9,8 +9,9 @@ from nines.types import Task
 
 Solver = Callable[..., tuple[str, float]]
 
-# Cap live concurrency for demo stability.
-_SEMAPHORE = threading.Semaphore(3)
+# Cap live concurrency for demo stability (T8: 4–5).
+_SEMAPHORE = threading.Semaphore(5)
+MAX_WORKERS = 5
 
 
 class RateLimitError(Exception):

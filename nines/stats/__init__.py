@@ -1,3 +1,7 @@
-from nines.stats.wilson import target_met, wilson_interval
+from nines.stats.wilson import (
+    max_achievable_lower_bound,
+    target_met,
+    wilson_interval,
+)
 
-__all__ = ["wilson_interval", "target_met"]
+__all__ = ["max_achievable_lower_bound", "target_met", "wilson_interval"]

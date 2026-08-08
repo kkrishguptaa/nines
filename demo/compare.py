@@ -73,17 +73,20 @@ def compare(
         if on_attempt:
             on_attempt("single_shot", attempt)
 
-    ports.setdefault("initial_batch", trials)
-    ports.setdefault("escalate", False)
+    ports.setdefault("initial_batch", min(trials, 8))
+    ports.setdefault("escalate", True)
+
+    def _nines_cb(attempt: Attempt) -> None:
+        if on_attempt:
+            on_attempt("nines", attempt)
+
+    ports["on_attempt"] = _nines_cb
     nines_receipt: Receipt = run(
         task,
         target=target,
         budget=b,
         **ports,
     )
-    for attempt in nines_receipt.attempts:
-        if on_attempt:
-            on_attempt("nines", attempt)
 
     from nines.stats.wilson import target_met as wilson_target_met
     from nines.stats.wilson import wilson_interval
@@ -113,6 +116,12 @@ def compare(
         total_cost_usd=sum(a.cost_usd for a in ss_attempts),
         best_output=next((a.output for a in ss_attempts if a.passed), None),
         detail=ss_detail,
+        checker_validated=bool(meta and meta.canary_passed),
+        canary_detail=(
+            "baseline uses shared checker"
+            if meta is not None
+            else "no checker (soft-pass)"
+        ),
     )
 
     return {
@@ -124,6 +133,8 @@ def compare(
 
 
 def _print_summary(result: dict[str, Any]) -> None:
+    from nines.report import format_config_line, format_failure_summary
+
     ss: Receipt = result["single_shot"]
     ni: Receipt = result["nines"]
     ss_rate = (ss.passes / ss.trials * 100) if ss.trials else 0.0
@@ -133,11 +144,16 @@ def _print_summary(result: dict[str, Any]) -> None:
         else "Wilson n/a"
     )
     soft = " [soft-pass, no checker]" if not ss.verifiable else ""
+    print(
+        f"[canary] validated={ni.checker_validated} detail={ni.canary_detail}"
+    )
     print(f"single-shot: {ss.passes}/{ss.trials} ({ss_rate:.0f}%){soft} target_met={ss.target_met}")
     print(
         f"nines:       {ni.passes}/{ni.trials} ({wilson}) "
         f"target_met={ni.target_met} cost=${ni.total_cost_usd:.4f}"
     )
+    print(f"by model:    {format_config_line(ni)}")
+    print(format_failure_summary(ni))
 
 
 def _load_fallback_task() -> tuple[Task, VerifierMeta]:
@@ -155,11 +171,24 @@ def _load_fallback_task() -> tuple[Task, VerifierMeta]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Compare single-shot Claude vs Nines")
     parser.add_argument("--task", help="Task prompt text (or demo/fallback_tasks.py:ADD)")
-    parser.add_argument("--trials", type=int, default=5)
-    parser.add_argument("--target", type=float, default=0.8)
+    parser.add_argument("--trials", type=int, default=25)
+    parser.add_argument("--target", type=float, default=0.7)
     parser.add_argument("--fallback", action="store_true", help="Use pre-seeded ADD task")
     parser.add_argument("--budget", type=float, default=5.0)
+    parser.add_argument(
+        "--models",
+        default="opus,sonnet,haiku",
+        help="Comma-separated solver tiers for Nines fan-out (default: opus,sonnet,haiku)",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="No durable state; re-run is a clean reset (banner only)",
+    )
     args = parser.parse_args(argv)
+    models = tuple(m.strip() for m in args.models.split(",") if m.strip())
+    if args.reset:
+        print("reset: no durable state; this run is a clean demo slate", file=sys.stderr)
 
     checker = None
     if args.fallback or not args.task:
@@ -169,11 +198,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         task = Task(prompt=args.task)
 
-    def on_attempt(path: str, attempt: Attempt) -> None:
-        status = "PASS" if attempt.passed else "FAIL"
-        print(f"[{path}] {status} model={attempt.config.get('model')} cost=${attempt.cost_usd:.4f}")
-
     import os
+
+    from demo.rich_ui import DemoLive
 
     class _Echo:
         """Labeled mock solver for demo shape without live API spend."""
@@ -196,38 +223,47 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     try:
-        if live_solver is not None:
-            synth = live_synth if checker is None else (lambda t, **k: checker)
-            result = compare(
-                task,
-                trials=args.trials,
-                target=args.target,
-                single_shot=live_solver,
-                nines_ports={"synthesizer": synth, "solver": live_solver},
-                budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
-                on_attempt=on_attempt,
-                checker=checker,
-            )
-        else:
-            if not os.environ.get("ANTHROPIC_API_KEY"):
-                print(
-                    "ANTHROPIC_API_KEY not set; using labeled mock solver.",
-                    file=sys.stderr,
+        with DemoLive(target=args.target) as live:
+            if checker is not None:
+                live.set_canary(True, "fallback checker pre-validated")
+            if live_solver is not None:
+                synth = live_synth if checker is None else (lambda t, **k: checker)
+                result = compare(
+                    task,
+                    trials=args.trials,
+                    target=args.target,
+                    single_shot=live_solver,
+                    nines_ports={
+                        "synthesizer": synth,
+                        "solver": live_solver,
+                        "models": models,
+                    },
+                    budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
+                    on_attempt=live.on_attempt,
+                    checker=checker,
                 )
-            echo = _Echo()
-            result = compare(
-                task,
-                trials=args.trials,
-                target=args.target,
-                single_shot=echo,
-                nines_ports={
-                    "synthesizer": (lambda t, **k: checker) if checker else None,
-                    "solver": echo,
-                },
-                budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
-                on_attempt=on_attempt,
-                checker=checker,
-            )
+            else:
+                if not os.environ.get("ANTHROPIC_API_KEY"):
+                    print(
+                        "ANTHROPIC_API_KEY not set; using labeled mock solver.",
+                        file=sys.stderr,
+                    )
+                echo = _Echo()
+                result = compare(
+                    task,
+                    trials=args.trials,
+                    target=args.target,
+                    single_shot=echo,
+                    nines_ports={
+                        "synthesizer": (lambda t, **k: checker) if checker else None,
+                        "solver": echo,
+                        "models": models,
+                    },
+                    budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
+                    on_attempt=live.on_attempt,
+                    checker=checker,
+                )
+            live.finalize(result)
     except Exception as exc:  # noqa: BLE001
         print(f"compare failed: {exc}", file=sys.stderr)
         return 1

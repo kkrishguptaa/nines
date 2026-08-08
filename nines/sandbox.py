@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 
 def _minimal_env() -> dict[str, str]:
@@ -26,7 +27,6 @@ def _minimal_env() -> dict[str, str]:
         "WINDIR",
     )
     env = {k: os.environ[k] for k in keep if k in os.environ}
-    # Prefer the same interpreter; do not forward ANTHROPIC_*/AWS_*/OPENAI_*/etc.
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
 
@@ -41,27 +41,38 @@ def run_python(
 ) -> object:
     """Execute ``fn_name(*args)`` from ``code`` in a subprocess.
 
-    Not safe for untrusted input — timeout + scrubbed env only, no containers.
+    Writes code to a temp file (avoids shell/-c quoting bugs). Not safe for
+    untrusted input — timeout + scrubbed env only, no containers.
     """
-    payload = (
+    child_env = env if env is not None else _minimal_env()
+    driver = (
         "import json, sys\n"
-        f"{code}\n"
-        "args = json.loads(sys.argv[1])\n"
-        f"result = {fn_name}(*args)\n"
+        f"import runpy\n"
+        f"ns = runpy.run_path(sys.argv[1])\n"
+        "args = json.loads(sys.argv[2])\n"
+        f"result = ns[{fn_name!r}](*args)\n"
         'print(json.dumps({"ok": True, "result": result}))\n'
     )
-    child_env = env if env is not None else _minimal_env()
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-c", payload, json.dumps(args)],
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-            env=child_env,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise TimeoutError(f"sandbox timed out after {timeout_s}s") from exc
+    with tempfile.TemporaryDirectory(prefix="nines_sandbox_") as tmp:
+        code_path = os.path.join(tmp, "checker.py")
+        driver_path = os.path.join(tmp, "driver.py")
+        with open(code_path, "w", encoding="utf-8") as f:
+            f.write(code)
+            if not code.endswith("\n"):
+                f.write("\n")
+        with open(driver_path, "w", encoding="utf-8") as f:
+            f.write(driver)
+        try:
+            proc = subprocess.run(
+                [sys.executable, driver_path, code_path, json.dumps(args)],
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                check=False,
+                env=child_env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError(f"sandbox timed out after {timeout_s}s") from exc
 
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or "sandbox failed")

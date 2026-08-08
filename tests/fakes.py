@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 from nines.types import Task, VerifierMeta
 
 
@@ -22,18 +24,20 @@ class FakeSolver:
         self.pass_rate = pass_rate
         self.calls = 0
         self._rng = __import__("random").Random(seed)
+        self._lock = threading.Lock()
 
     def __call__(self, task: Task, config: dict, **kwargs) -> tuple[str, float]:
-        idx = self.calls
-        self.calls += 1
-        if self.always_pass:
-            return "PASS", self.cost_usd
-        if self.pass_rate is not None:
-            ok = self._rng.random() < self.pass_rate
-            return ("PASS" if ok else "FAIL"), self.cost_usd
-        if idx in self.pass_indices:
-            return "PASS", self.cost_usd
-        return "FAIL", self.cost_usd
+        with self._lock:
+            idx = self.calls
+            self.calls += 1
+            if self.always_pass:
+                return "PASS", self.cost_usd
+            if self.pass_rate is not None:
+                ok = self._rng.random() < self.pass_rate
+                return ("PASS" if ok else "FAIL"), self.cost_usd
+            if idx in self.pass_indices:
+                return "PASS", self.cost_usd
+            return "FAIL", self.cost_usd
 
 
 class FlakyRateLimitSolver:
@@ -43,12 +47,15 @@ class FlakyRateLimitSolver:
         self.fail_times = fail_times
         self.cost_usd = cost_usd
         self.calls = 0
+        self._lock = threading.Lock()
 
     def __call__(self, task: Task, config: dict, **kwargs) -> tuple[str, float]:
         from nines.solver.call import RateLimitError
 
-        self.calls += 1
-        if self.calls <= self.fail_times:
+        with self._lock:
+            self.calls += 1
+            calls = self.calls
+        if calls <= self.fail_times:
             raise RateLimitError("429 rate limited (mock)")
         return "PASS", self.cost_usd
 

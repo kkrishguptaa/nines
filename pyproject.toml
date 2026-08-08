@@ -2,7 +2,7 @@
 name = "nines"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["anthropic", "hypothesis", "httpx"]
+dependencies = ["anthropic", "hypothesis", "httpx", "rich"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio"]

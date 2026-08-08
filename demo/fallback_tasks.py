@@ -21,7 +21,7 @@ def check(output: str) -> bool:
         lines = body.splitlines()
         if lines and lines[0].strip() and not lines[0].lstrip().startswith(("def ", "class ", "import ", "from ")):
             lines = lines[1:]
-        text = "\n".join(lines).strip()
+        text = chr(10).join(lines).strip()
     ns = {}
     try:
         exec(text, ns, ns)

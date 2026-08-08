@@ -23,6 +23,7 @@ class Attempt:
     passed: bool | None
     cost_usd: float
     error: str | None = None
+    fail_reason: str | None = None
 
 
 @dataclass
@@ -48,3 +49,5 @@ class Receipt:
     total_cost_usd: float
     best_output: str | None
     detail: str | None = None
+    checker_validated: bool = False
+    canary_detail: str | None = None

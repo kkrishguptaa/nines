@@ -23,7 +23,8 @@ def test_higher_target_spends_more_attempts():
     )
     r_high = run(
         Task(prompt="implement add(a,b)"),
-        target=0.95,
+        # 0.95 needs ≥73 perfect trials; use 0.85 which is reachable at 40.
+        target=0.85,
         budget=Budget(max_cost_usd=50.0, max_attempts=40),
         synthesizer=FakeSynthesizer.ok_checker(),
         solver=solver_high,
