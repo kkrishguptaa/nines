@@ -9,6 +9,7 @@ def test_run_returns_receipt_echoing_target():
     )
     assert isinstance(receipt, Receipt)
     assert receipt.target == 0.9
-    assert receipt.verifiable is False or isinstance(receipt.verifiable, bool)
+    assert receipt.verifiable is False
     assert receipt.target_met is False
-    assert receipt.attempts == [] or isinstance(receipt.attempts, list)
+    assert receipt.attempts == []
+    assert receipt.detail

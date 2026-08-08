@@ -56,7 +56,6 @@ def _default_synthesize(
     """Live path: ask LLM for a check(output) script. Optional for unit tests."""
     if llm is None:
         return None
-    _ = regenerate
     prompt = (
         "From the following task description only, write a Python function "
         "`def check(output: str) -> bool` that returns True iff the candidate "
@@ -66,12 +65,18 @@ def _default_synthesize(
     )
     if task.context:
         prompt += f"\n\nContext:\n{task.context}"
+    if regenerate:
+        prompt += (
+            "\n\nPrevious checker failed a known-bad canary (it accepted bad "
+            "output). Emit a stricter check that rejects empty/placeholder "
+            "strings and requires real task evidence."
+        )
     text = llm(prompt)
     if not text or "def check" not in text:
         return None
-    # Extract from first def check onward if fenced.
-    start = text.find("def check")
-    source = text[start:].strip()
+    source = _extract_check_source(text)
+    if not source:
+        return None
     tier = VerifierTier.DETERMINISTIC
     if "hypothesis" in source.lower():
         tier = VerifierTier.HYPOTHESIS
@@ -83,3 +88,14 @@ def _default_synthesize(
         rubric=None,
         canary_passed=False,
     )
+
+
+def _extract_check_source(text: str) -> str | None:
+    start = text.find("def check")
+    if start < 0:
+        return None
+    source = text[start:].strip()
+    # Drop a trailing markdown fence if the model wrapped the function.
+    if "```" in source:
+        source = source.split("```", 1)[0].rstrip()
+    return source or None

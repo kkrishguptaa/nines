@@ -17,9 +17,11 @@ Only claims that map to real code. Mocks in `tests/fakes.py` are labeled as mock
 | Pre-seeded fallback task | `demo/fallback_tasks.py` |
 | 429 backoff + concurrency cap | `nines/solver/call.py` |
 | Subprocess sandbox (not multi-tenant safe) | `nines/sandbox.py`, README |
+| Checker subprocess uses scrubbed env (no API keys) | `nines/sandbox.py` `_minimal_env` |
 
 ## Explicit non-claims
 
 - Not a novel model or trained weights.
 - Not a production SLA or multi-tenant isolation boundary.
 - Cost figures from the Anthropic adapter are approximate token estimates, not invoices.
+- Subprocess sandbox still inherits a minimal OS env and can touch the filesystem — **not** safe for untrusted multi-tenant input; secrets are scrubbed from the child env but this is not container isolation.

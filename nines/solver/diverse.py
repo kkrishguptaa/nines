@@ -5,11 +5,15 @@ EFFORTS = ("low", "medium", "high")
 FRAMINGS = ("direct", "decompose", "checklist")
 
 
-def diversity_configs(n: int) -> list[dict]:
-    """Build ``n`` configs varying model tier, effort, and framing."""
+def diversity_configs(n: int, *, start: int = 0) -> list[dict]:
+    """Build ``n`` configs varying model tier, effort, and framing.
+
+    ``start`` offsets the matrix so later escalation batches do not repeat the
+    same triples as earlier ones.
+    """
     seen: set[tuple[str, str, str]] = set()
     unique: list[dict] = []
-    i = 0
+    i = max(0, start)
     while len(unique) < n:
         cfg = {
             "model": MODELS[i % len(MODELS)],
@@ -28,6 +32,6 @@ def diversity_configs(n: int) -> list[dict]:
             seen.add(key)
             unique.append(cfg)
         i += 1
-        if i > max(n * 20, 50):
+        if i > start + max(n * 20, 50):
             break
     return unique[:n]

@@ -12,6 +12,18 @@ _MODEL_MAP = {
     "opus": "claude-opus-4-6",
 }
 
+# Approximate USD per token (input, output). Not a billing API.
+_RATE_USD = {
+    "haiku": (1e-6, 5e-6),
+    "sonnet": (3e-6, 15e-6),
+    "opus": (15e-6, 75e-6),
+}
+
+
+def _estimate_cost(alias: str, in_tok: int, out_tok: int) -> float:
+    inn, out = _RATE_USD.get(alias, _RATE_USD["sonnet"])
+    return in_tok * inn + out_tok * out
+
 
 def _client():
     import anthropic
@@ -58,8 +70,8 @@ class AnthropicSolver:
         usage = getattr(msg, "usage", None)
         in_tok = getattr(usage, "input_tokens", 0) or 0
         out_tok = getattr(usage, "output_tokens", 0) or 0
-        # Rough USD estimate; not a billing API.
-        cost = in_tok * 3e-6 + out_tok * 15e-6
+        alias = config.get("model", "sonnet")
+        cost = _estimate_cost(alias, in_tok, out_tok)
         return text, cost
 
 

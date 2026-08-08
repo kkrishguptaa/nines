@@ -61,7 +61,10 @@ def run(
         room = max_attempts - len(attempts)
         if room <= 0 or remaining(b.max_cost_usd, total_cost) <= 0:
             break
-        configs = diversity_configs(min(batch_size, room))
+        before = len(attempts)
+        configs = diversity_configs(min(batch_size, room), start=len(attempts))
+        if not configs:
+            break
         for config in configs:
             if len(attempts) >= max_attempts:
                 break
@@ -80,9 +83,8 @@ def run(
                     )
                 )
                 continue
-            # Pre-check cost ceiling: if this attempt would exceed, stop before spend.
-            if total_cost + cost > b.max_cost_usd and attempts:
-                break
+
+            # Always account spend after the model call; never discard a paid attempt.
             total_cost = accumulate(total_cost, cost)
             try:
                 ok = check_output(meta, output)
@@ -112,6 +114,10 @@ def run(
                     best_output = output
 
         trials = len(attempts)
+        if trials == before:
+            # No progress this round — avoid an infinite loop.
+            break
+
         if trials > 0:
             wilson_low, wilson_high = wilson_interval(passes, trials)
             met = wilson_target_met(passes, trials, target)
@@ -128,12 +134,12 @@ def run(
             break
 
         # Escalate batch size (capped by remaining attempts).
-        batch_size = min(max(batch_size, initial_batch), max_attempts - trials)
+        next_size = max(batch_size * 2, batch_size + 1)
+        batch_size = min(next_size, max_attempts - trials)
         if batch_size <= 0:
             break
 
     trials = len(attempts)
-    detail = None
     if passes == 0:
         detail = "zero passing candidates; refusing silent best-guess"
     elif met:
