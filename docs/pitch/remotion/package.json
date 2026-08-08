@@ -1,0 +1,31 @@
+{
+  "name": "nines-pitch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nines hackathon pitch deck + demo reel (Remotion)",
+  "license": "Apache-2.0",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "build": "remotion bundle src/index.ts",
+    "render:reel": "remotion render src/index.ts DemoReel out/nines-reel.mp4",
+    "render:deck": "remotion render src/index.ts PitchDeck out/nines-deck.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.507",
+    "@remotion/google-fonts": "4.0.507",
+    "@remotion/player": "^4.0.507",
+    "@remotion/transitions": "4.0.507",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "remotion": "^4.0.507"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "typescript": "^5.8.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}
