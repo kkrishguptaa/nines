@@ -185,11 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         task = Task(prompt=args.task)
 
-    def on_attempt(path: str, attempt: Attempt) -> None:
-        status = "PASS" if attempt.passed else "FAIL"
-        print(f"[{path}] {status} model={attempt.config.get('model')} cost=${attempt.cost_usd:.4f}")
-
     import os
+
+    from demo.rich_ui import DemoLive
 
     class _Echo:
         """Labeled mock solver for demo shape without live API spend."""
@@ -212,38 +210,42 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     try:
-        if live_solver is not None:
-            synth = live_synth if checker is None else (lambda t, **k: checker)
-            result = compare(
-                task,
-                trials=args.trials,
-                target=args.target,
-                single_shot=live_solver,
-                nines_ports={"synthesizer": synth, "solver": live_solver},
-                budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
-                on_attempt=on_attempt,
-                checker=checker,
-            )
-        else:
-            if not os.environ.get("ANTHROPIC_API_KEY"):
-                print(
-                    "ANTHROPIC_API_KEY not set; using labeled mock solver.",
-                    file=sys.stderr,
+        with DemoLive(target=args.target) as live:
+            if checker is not None:
+                live.set_canary(True, "fallback checker pre-validated")
+            if live_solver is not None:
+                synth = live_synth if checker is None else (lambda t, **k: checker)
+                result = compare(
+                    task,
+                    trials=args.trials,
+                    target=args.target,
+                    single_shot=live_solver,
+                    nines_ports={"synthesizer": synth, "solver": live_solver},
+                    budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
+                    on_attempt=live.on_attempt,
+                    checker=checker,
                 )
-            echo = _Echo()
-            result = compare(
-                task,
-                trials=args.trials,
-                target=args.target,
-                single_shot=echo,
-                nines_ports={
-                    "synthesizer": (lambda t, **k: checker) if checker else None,
-                    "solver": echo,
-                },
-                budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
-                on_attempt=on_attempt,
-                checker=checker,
-            )
+            else:
+                if not os.environ.get("ANTHROPIC_API_KEY"):
+                    print(
+                        "ANTHROPIC_API_KEY not set; using labeled mock solver.",
+                        file=sys.stderr,
+                    )
+                echo = _Echo()
+                result = compare(
+                    task,
+                    trials=args.trials,
+                    target=args.target,
+                    single_shot=echo,
+                    nines_ports={
+                        "synthesizer": (lambda t, **k: checker) if checker else None,
+                        "solver": echo,
+                    },
+                    budget=Budget(max_cost_usd=args.budget, max_attempts=args.trials),
+                    on_attempt=live.on_attempt,
+                    checker=checker,
+                )
+            live.finalize(result)
     except Exception as exc:  # noqa: BLE001
         print(f"compare failed: {exc}", file=sys.stderr)
         return 1

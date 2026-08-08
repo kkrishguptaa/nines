@@ -7,12 +7,14 @@ Nines is a **reliability compiler**: declare a `target` reliability and optional
 ```python
 from nines import run, Task, Budget
 
+# With ANTHROPIC_API_KEY set, bare run defaults to live Claude ports.
+# Unit tests inject FakeSynthesizer / FakeSolver (labeled mocks).
 receipt = run(
     Task(prompt="implement add(a, b) -> int"),
-    target=0.95,
-    budget=Budget(max_cost_usd=5.0, max_attempts=20),
+    target=0.7,
+    budget=Budget(max_cost_usd=5.0, max_attempts=25),
 )
-print(receipt.target_met, receipt.best_output, receipt.detail)
+print(receipt.target_met, receipt.best_output, receipt.checker_validated)
 ```
 
 ## What this repo claims
